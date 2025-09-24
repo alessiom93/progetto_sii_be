@@ -13,6 +13,11 @@ This is a simple Python backend with basic endpoints for a recommender system. I
 
 ## Setup and Installation
 
+# Run Python File
+# conda activate machine_learning_001
+# python c:/Users/alemo/OneDrive/Lavoro/progetto_sii_be/tests.py
+
+
 ### Prerequisites
 - Python 3.7+
 - pip

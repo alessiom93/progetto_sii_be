@@ -8,6 +8,14 @@ from flask_cors import CORS
 import logging
 from datetime import datetime
 
+# Import service functions
+from services import (
+    get_all_recommendations,
+    get_recommendations_by_user,
+    create_recommendation,
+    get_recommendations_count
+)
+
 # Configure logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -15,27 +23,6 @@ logger = logging.getLogger(__name__)
 # Initialize Flask app
 app = Flask(__name__)
 CORS(app)
-
-# In-memory storage for recommendations (in a real app, this would be a database)
-recommendations_db = [
-    {
-        "id": 1,
-        "user_id": "user1",
-        "item": "Product A",
-        "score": 0.95,
-        "created_at": "2024-01-01T10:00:00Z"
-    },
-    {
-        "id": 2,
-        "user_id": "user1", 
-        "item": "Product B",
-        "score": 0.87,
-        "created_at": "2024-01-01T10:05:00Z"
-    }
-]
-
-# Counter for generating new IDs
-next_id = 3
 
 
 @app.route('/', methods=['GET'])
@@ -67,10 +54,7 @@ def get_recommendations():
         
         if user_id:
             # Filter recommendations by user_id
-            filtered_recommendations = [
-                rec for rec in recommendations_db 
-                if rec['user_id'] == user_id
-            ]
+            filtered_recommendations = get_recommendations_by_user(user_id)
             return jsonify({
                 "status": "success",
                 "data": filtered_recommendations,
@@ -79,10 +63,11 @@ def get_recommendations():
             })
         else:
             # Return all recommendations
+            all_recommendations = get_all_recommendations()
             return jsonify({
                 "status": "success",
-                "data": recommendations_db,
-                "count": len(recommendations_db)
+                "data": all_recommendations,
+                "count": len(all_recommendations)
             })
             
     except Exception as e:
@@ -94,51 +79,26 @@ def get_recommendations():
 
 
 @app.route('/api/recommendations', methods=['POST'])
-def create_recommendation():
+def create_recommendation_endpoint():
     """Create a new recommendation."""
     try:
-        global next_id
         data = request.get_json()
         
-        # Validate required fields
-        if not data:
-            return jsonify({
-                "status": "error",
-                "message": "No data provided"
-            }), 400
-            
-        if not all(key in data for key in ['user_id', 'item', 'score']):
-            return jsonify({
-                "status": "error",
-                "message": "Missing required fields: user_id, item, score"
-            }), 400
-        
-        # Validate score range
-        if not (0 <= data['score'] <= 1):
-            return jsonify({
-                "status": "error",
-                "message": "Score must be between 0 and 1"
-            }), 400
-        
-        # Create new recommendation
-        new_recommendation = {
-            "id": next_id,
-            "user_id": data['user_id'],
-            "item": data['item'],
-            "score": float(data['score']),
-            "created_at": datetime.utcnow().isoformat() + "Z"
-        }
-        
-        recommendations_db.append(new_recommendation)
-        next_id += 1
-        
-        logger.info(f"Created new recommendation with ID {new_recommendation['id']}")
+        # Create new recommendation using service function
+        new_recommendation = create_recommendation(data)
         
         return jsonify({
             "status": "success",
             "message": "Recommendation created successfully",
             "data": new_recommendation
         }), 201
+        
+    except ValueError as e:
+        # Handle validation errors
+        return jsonify({
+            "status": "error",
+            "message": str(e)
+        }), 400
         
     except Exception as e:
         logger.error(f"Error creating recommendation: {str(e)}")
