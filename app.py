@@ -7,6 +7,7 @@ from flask import Flask, jsonify, request
 from flask_cors import CORS
 import logging
 from datetime import datetime
+import pandas as pd
 
 # Import service functions
 from services import (
@@ -27,7 +28,8 @@ def get_top_popularity_rs():
     """Get top 10 popular books based on ratings."""
     try:
         # Call service function to get top 10 popular books
-        top_10_books = get_10_top_popular_books()
+        ratings_explicit_mod = pd.read_csv('C:/Users/alemo/OneDrive/Lavoro/progetto_sii_be/dataset_mod/ratings_explicit_mod.csv')
+        top_10_books = get_10_top_popular_books(ratings_explicit_mod)
         # Enrich with book details
         for book in top_10_books:
             book_info = get_book_info_by_isbn(book['ISBN'])
