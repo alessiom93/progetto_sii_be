@@ -9,7 +9,7 @@
 
 import pandas as pd
 
-def item_based_cf(ratings_matrix, user_id):
+def item_based_cf(user_id):
     ratings_explicit_mod = pd.read_csv('C:/Users/alemo/OneDrive/Lavoro/progetto_sii_be/dataset_mod/ratings_explicit_mod.csv')
     # Find similar items
     similar_items = find_similar_items(ratings_explicit_mod, user_id)
