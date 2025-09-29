@@ -2,7 +2,7 @@
 # Pearson correlation for user similarity [-1, +1]
 # Input: ratings-matrix and user-id
 # Find similar users based on ratings for same books
-# Calculate predictions for books not yet rated by the user, using similar users' ratings
+# Calculate predictions for books not rated by the user, using similar users' ratings
 # Output: list of recommended books (ISBNs)
 
 # Miglioramenti futuri:
@@ -24,8 +24,6 @@ def user_based_cf(ratings_matrix, user_id):
     all_books = set(ratings_explicit_mod['ISBN'].unique())
     books_to_predict = all_books - user_rated_books
     predicted_ratings = calculate_predictions(user_id, books_to_predict, top_similar_users, ratings_explicit_mod)
-    # Sort recommended books by predicted rating
-    predicted_ratings.sort(key=lambda x: x[1], reverse=True)
     return predicted_ratings[:10]  # Return top 10 recommendations
 
 def find_similar_users(ratings_matrix, user_id):
@@ -35,7 +33,7 @@ def find_similar_users(ratings_matrix, user_id):
     for other_user_id in all_users_ids_but_current:
         similarity = calculate_users_similarity(user_id, other_user_id, ratings_matrix)
         similarities.append((other_user_id, similarity))
-    # Sort by similarity score
+    # Sort by similarity score / negative similarities are useful in user-based CF
     similarities.sort(key=lambda x: x[1], reverse=True)
     return similarities
 
@@ -95,7 +93,7 @@ def calculate_prediction(user_id, isbn, similar_users, ratings_explicit_mod):
         other_user_rating = get_user_rating(other_user_id, isbn, ratings_explicit_mod)
         if other_user_rating is not None:
             numerator += similarity * (other_user_rating - calculate_user_average_rating(other_user_id, ratings_explicit_mod))
-            denominator += similarity
+            denominator += similarity # in user-based CF, negative similarities are useful
     user_avg_rating = calculate_user_average_rating(user_id, ratings_explicit_mod)
     return user_avg_rating + (numerator / denominator if denominator != 0 else 0)
 
@@ -105,4 +103,5 @@ def calculate_predictions(user_id, books_to_predict, similar_users, ratings_expl
         predicted_rating = calculate_prediction(user_id, book, similar_users, ratings_explicit_mod)
         if predicted_rating > 0:
             predictions.append((book, predicted_rating))
+    predictions.sort(key=lambda x: x[1], reverse=True)
     return predictions
