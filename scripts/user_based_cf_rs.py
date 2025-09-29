@@ -16,7 +16,7 @@
 
 import pandas as pd
 
-def user_based_cf(ratings_matrix, user_id):
+def user_based_cf(user_id):
     ratings_explicit_mod = pd.read_csv('C:/Users/alemo/OneDrive/Lavoro/progetto_sii_be/dataset_mod/ratings_explicit_mod.csv')
     # Find similar users
     similar_users = find_similar_users(ratings_explicit_mod, user_id)
