@@ -10,10 +10,7 @@ from datetime import datetime
 
 # Import service functions
 from services import (
-    get_all_recommendations,
-    get_recommendations_by_user,
-    create_recommendation,
-    get_recommendations_count
+    get_book_info_by_isbn
 )
 
 # Configure logging
@@ -24,6 +21,28 @@ logger = logging.getLogger(__name__)
 app = Flask(__name__)
 CORS(app)
 
+from scripts.top_popularity_rs import get_10_top_popular_books
+@app.route('/get_top_popularity_rs', methods=['GET'])
+def get_top_popularity_rs():
+    """Get top 10 popular books based on ratings."""
+    try:
+        # Call service function to get top 10 popular books
+        top_10_books = get_10_top_popular_books()
+        # Enrich with book details
+        for book in top_10_books:
+            book_info = get_book_info_by_isbn(book['ISBN'])
+            if book_info:
+                book.update(book_info)
+        return jsonify({
+            "status": "success",
+            "data": top_10_books
+        })
+    except Exception as e:
+        logger.error(f"Error getting top popularity recommendations: {str(e)}")
+        return jsonify({
+            "status": "error",
+            "message": "Failed to retrieve top popularity recommendations"
+        }), 500
 
 @app.route('/', methods=['GET'])
 def health_check():
@@ -44,69 +63,6 @@ def api_health():
         "version": "1.0.0",
         "timestamp": datetime.utcnow().isoformat() + "Z"
     })
-
-
-@app.route('/api/recommendations', methods=['GET'])
-def get_recommendations():
-    """Get recommendations, optionally filtered by user_id."""
-    try:
-        user_id = request.args.get('user_id')
-        
-        if user_id:
-            # Filter recommendations by user_id
-            filtered_recommendations = get_recommendations_by_user(user_id)
-            return jsonify({
-                "status": "success",
-                "data": filtered_recommendations,
-                "count": len(filtered_recommendations),
-                "user_id": user_id
-            })
-        else:
-            # Return all recommendations
-            all_recommendations = get_all_recommendations()
-            return jsonify({
-                "status": "success",
-                "data": all_recommendations,
-                "count": len(all_recommendations)
-            })
-            
-    except Exception as e:
-        logger.error(f"Error getting recommendations: {str(e)}")
-        return jsonify({
-            "status": "error",
-            "message": "Failed to retrieve recommendations"
-        }), 500
-
-
-@app.route('/api/recommendations', methods=['POST'])
-def create_recommendation_endpoint():
-    """Create a new recommendation."""
-    try:
-        data = request.get_json()
-        
-        # Create new recommendation using service function
-        new_recommendation = create_recommendation(data)
-        
-        return jsonify({
-            "status": "success",
-            "message": "Recommendation created successfully",
-            "data": new_recommendation
-        }), 201
-        
-    except ValueError as e:
-        # Handle validation errors
-        return jsonify({
-            "status": "error",
-            "message": str(e)
-        }), 400
-        
-    except Exception as e:
-        logger.error(f"Error creating recommendation: {str(e)}")
-        return jsonify({
-            "status": "error",
-            "message": "Failed to create recommendation"
-        }), 500
-
 
 @app.errorhandler(404)
 def not_found(error):
