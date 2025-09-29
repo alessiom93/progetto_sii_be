@@ -16,17 +16,14 @@ def user_based_cf(ratings_matrix, user_id):
     user_rated_books = set(get_books_rated_by_user(user_id, ratings_explicit_mod))
     all_books = set(ratings_explicit_mod['ISBN'].unique())
     books_to_predict = all_books - user_rated_books
-    recommended_books = []
-    for book in books_to_predict:
-        predicted_rating = calculate_prediction(user_id, book, top_similar_users, ratings_explicit_mod)
-        if predicted_rating > 0:
-            recommended_books.append((book, predicted_rating))
+    predicted_ratings = calculate_predictions(user_id, books_to_predict, top_similar_users, ratings_explicit_mod)
     # Sort recommended books by predicted rating
-    recommended_books.sort(key=lambda x: x[1], reverse=True)
-    return recommended_books[:10]  # Return top 10 recommendations
+    predicted_ratings.sort(key=lambda x: x[1], reverse=True)
+    return predicted_ratings[:10]  # Return top 10 recommendations
 
 def find_similar_users(ratings_matrix, user_id):
-    all_users_ids_but_current = ratings_matrix.index[ratings_matrix.index != user_id]
+    all_users_ids_but_current = ratings_matrix['User-ID'].unique()
+    all_users_ids_but_current = [u for u in all_users_ids_but_current if u != user_id]
     similarities = []
     for other_user_id in all_users_ids_but_current:
         similarity = calculate_users_similarity(user_id, other_user_id, ratings_matrix)
@@ -91,6 +88,14 @@ def calculate_prediction(user_id, isbn, similar_users, ratings_explicit_mod):
         other_user_rating = get_user_rating(other_user_id, isbn, ratings_explicit_mod)
         if other_user_rating is not None:
             numerator += similarity * (other_user_rating - calculate_user_average_rating(other_user_id, ratings_explicit_mod))
-            denominator += abs(similarity)
+            denominator += similarity
     user_avg_rating = calculate_user_average_rating(user_id, ratings_explicit_mod)
     return user_avg_rating + (numerator / denominator if denominator != 0 else 0)
+
+def calculate_predictions(user_id, books_to_predict, similar_users, ratings_explicit_mod):
+    predictions = []
+    for book in books_to_predict:
+        predicted_rating = calculate_prediction(user_id, book, similar_users, ratings_explicit_mod)
+        if predicted_rating > 0:
+            predictions.append((book, predicted_rating))
+    return predictions
