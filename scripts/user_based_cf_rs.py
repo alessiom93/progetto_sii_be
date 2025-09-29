@@ -1,9 +1,16 @@
 # User-based collaborative filtering recommendation system
 # Pearson correlation for user similarity [-1, +1]
 # Input: ratings-matrix and user-id
-# Find similar users based on rating patterns
-# Aggregate their preferences to recommend books
+# Find similar users based on ratings for same books
+# Calculate predictions for books not yet rated by the user, using similar users' ratings
 # Output: list of recommended books (ISBNs)
+
+# Miglioramenti futuri:
+# - I ratings su item che piacciono a tutti sono meno importanti (usare pesi o manipolare la similarità finale)
+# - Usare solo utenti con un numero minimo di libri in comune (usare pesi o soglia minima)
+# - Modificare il peso dei ratings in base alla similarità (es. similarità*k)
+# - Calcolare sperimentalmente la soglia di similarità minima per includere un utente
+# - Calcolare sperimentalmente il numero di utenti simili da includere
 
 import pandas as pd
 
