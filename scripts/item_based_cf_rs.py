@@ -5,6 +5,8 @@
 # Calculate predictions for items not rated by the user, based on ratings of similar items by the user
 # Output: list of recommended books (ISBNs)
 
+# Chi ha letto questo libro ha anche letto...
+
 import pandas as pd
 
 def item_based_cf(ratings_matrix, user_id):

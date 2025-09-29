@@ -5,6 +5,8 @@
 # Calculate predictions for books not rated by the user, using similar users' ratings
 # Output: list of recommended books (ISBNs)
 
+# Utenti simili a te hanno apprezzato questi libri
+
 # Miglioramenti futuri:
 # - I ratings su item che piacciono a tutti sono meno importanti (usare pesi o manipolare la similarità finale)
 # - Usare solo utenti con un numero minimo di libri in comune (usare pesi o soglia minima)
