@@ -17,6 +17,29 @@ import seaborn as sns
 import os, sys
 import re
 
+def filter_users_and_books(ratings, users, books, min_ratings=100):
+    changed = True
+    while changed:
+        changed = False
+
+        # Filtra utenti con meno di min_ratings
+        user_counts = ratings['User-ID'].value_counts()
+        users_to_remove = user_counts[user_counts < min_ratings].index
+        if len(users_to_remove) > 0:
+            users = users[~users['User-ID'].isin(users_to_remove)]
+            ratings = ratings[~ratings['User-ID'].isin(users_to_remove)]
+            changed = True
+
+        # Filtra libri con meno di min_ratings
+        book_counts = ratings['ISBN'].value_counts()
+        books_to_remove = book_counts[book_counts < min_ratings].index
+        if len(books_to_remove) > 0:
+            books = books[~books['ISBN'].isin(books_to_remove)]
+            ratings = ratings[~ratings['ISBN'].isin(books_to_remove)]
+            changed = True
+
+    return ratings, users, books
+
 # Dont truncate column width when displaying dataframes
 # pd.set_option('display.max_colwidth', None)
 
@@ -42,6 +65,12 @@ print('Books missing values:\n', books.isnull().sum(), '\n')
 print('Users missing values:\n', users.isnull().sum(), '\n')
 print('Ratings missing values:\n', ratings.isnull().sum(), '\n')
 
+# Remove users and books with less than 10 ratings, and then from ratings
+ratings, users, books = filter_users_and_books(ratings, users, books, min_ratings=10)
+
+print("Final ratings shape:", ratings.shape)
+print("Remaining users:", users.shape)
+print("Remaining books:", books.shape)
 # Checking for unique and possibly invalid values in Books dataset
 # pd.set_option('display.max_colwidth', None)
 print('Book unique values:')
