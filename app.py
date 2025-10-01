@@ -116,15 +116,15 @@ from scripts.item_based_cf_rs import item_based_cf
 @app.route('/get_item_based_cf_rs', methods=['GET'])
 def get_item_based_cf_rs():
     """Get item-based collaborative filtering recommendations."""
-    item_id = request.args.get('item_id')
-    if not item_id:
+    user_id = request.args.get('user_id')
+    if not user_id:
         return jsonify({
             "status": "error",
-            "message": "Item ID is required"
+            "message": "User ID is required"
         }), 400
     try:
         ratings_explicit_mod = pd.read_csv('C:/Users/alemo/OneDrive/Lavoro/progetto_sii_be/dataset_mod/ratings_explicit_mod.csv')
-        recommendations = item_based_cf(item_id, ratings=ratings_explicit_mod, k=50, top_n=10)
+        recommendations = item_based_cf(user_id, ratings=ratings_explicit_mod, k=50, top_n=10)
         top_10_books = []
         # Enrich with book details
         for isbn, score in recommendations:
