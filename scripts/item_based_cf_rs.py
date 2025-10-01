@@ -133,10 +133,10 @@ def item_based_cf(user_id, ratings, k=50, top_n=10):
     return recommendations
 
 # Esempio di utilizzo:
-ratings = pd.read_csv("ratings_explicit_mod.csv")
-
-recommendations = item_based_cf(user_id=276729, ratings=ratings, k=50, top_n=10)
-
-print("Raccomandazioni Item-based per l’utente 276729:")
-for isbn, score in recommendations:
-    print(isbn, score)
+#ratings = pd.read_csv("ratings_explicit_mod.csv")
+#
+#recommendations = item_based_cf(user_id=276729, ratings=ratings, k=50, top_n=10)
+#
+#print("Raccomandazioni Item-based per l’utente 276729:")
+#for isbn, score in recommendations:
+#    print(isbn, score)

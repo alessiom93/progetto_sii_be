@@ -18,3 +18,6 @@ print('IPython version:', IPython.__version__)
 
 import sklearn
 print('scikit-learn version:', sklearn.__version__)
+
+import scipy
+print('SciPy version:', scipy.__version__)

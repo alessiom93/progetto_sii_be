@@ -131,11 +131,10 @@ def user_based_cf(user_id, ratings, k=50, top_n=10):
     return recommendations
 
 # Esempio di utilizzo:
-# ratings deve avere colonne: ['User-ID', 'ISBN', 'Book-Rating']
-ratings = pd.read_csv("ratings_explicit_mod.csv")
-
-recommendations = user_based_cf(user_id=276729, ratings=ratings, k=50, top_n=10)
-
-print("Raccomandazioni per l'utente 276729:")
-for isbn, score in recommendations:
-    print(isbn, score)
+#ratings = pd.read_csv("ratings_explicit_mod.csv")
+#
+#recommendations = user_based_cf(user_id=276729, ratings=ratings, k=50, top_n=10)
+#
+#print("Raccomandazioni per l'utente 276729:")
+#for isbn, score in recommendations:
+#    print(isbn, score)
