@@ -31,8 +31,8 @@ def build_item_user_matrix(ratings: pd.DataFrame):
     """
 
     # Convertiamo 'User-ID' e 'ISBN' in categorie numeriche
-    user_ids = ratings['User-ID'].astype('category')
-    item_ids = ratings['ISBN'].astype('category')
+    user_ids = ratings['User-ID'].astype(str).astype('category')
+    item_ids = ratings['ISBN'].astype(str).astype('category')
 
     # Dizionari per tornare da indici numerici agli ID originali
     user_mapping = dict(enumerate(user_ids.cat.categories))
