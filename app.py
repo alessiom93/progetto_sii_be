@@ -95,12 +95,15 @@ def get_user_based_cf_rs():
             "message": "User ID is required"
         }), 400
     try:
-        top_10_books = user_based_cf(user_id)
+        ratings_explicit_mod = pd.read_csv('C:/Users/alemo/OneDrive/Lavoro/progetto_sii_be/dataset_mod/ratings_explicit_mod.csv')
+        recommendations = user_based_cf(user_id, ratings=ratings_explicit_mod, k=50, top_n=10)
+        top_10_books = []
         # Enrich with book details
-        for book in top_10_books:
-            book_info = get_book_info_by_isbn(book['ISBN'])
+        for isbn, score in recommendations:
+            book_info = get_book_info_by_isbn(isbn)
             if book_info:
-                book.update(book_info)
+                book_info.update({'predicted_rating': score})
+                top_10_books.append(book_info)
         return jsonify({"top_10_books": top_10_books})
     except Exception as e:
         logger.error(f"Error getting user-based CF recommendations: {str(e)}")
@@ -120,12 +123,15 @@ def get_item_based_cf_rs():
             "message": "Item ID is required"
         }), 400
     try:
-        top_10_books = item_based_cf(item_id)
+        ratings_explicit_mod = pd.read_csv('C:/Users/alemo/OneDrive/Lavoro/progetto_sii_be/dataset_mod/ratings_explicit_mod.csv')
+        recommendations = item_based_cf(item_id, ratings=ratings_explicit_mod, k=50, top_n=10)
+        top_10_books = []
         # Enrich with book details
-        for book in top_10_books:
-            book_info = get_book_info_by_isbn(book['ISBN'])
+        for isbn, score in recommendations:
+            book_info = get_book_info_by_isbn(isbn)
             if book_info:
-                book.update(book_info)
+                book_info.update({'predicted_rating': score})
+                top_10_books.append(book_info)
         return jsonify({"top_10_books": top_10_books})
     except Exception as e:
         logger.error(f"Error getting item-based CF recommendations: {str(e)}")
