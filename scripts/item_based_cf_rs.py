@@ -1,113 +1,142 @@
-# Item-based collaborative filtering recommendation system
-# Pearson correlation for items similarity [-1, +1]
-# Input: ratings-matrix and user-id
-# Find similar items by users ratings
-# Calculate predictions for items not rated by the user, based on ratings of similar items by the user
-# Output: list of recommended books (ISBNs)
-
-# Chi ha letto questo libro ha anche letto...
+# Creo una matrice item × user: righe = libri, colonne = utenti, valori = rating.
+# Centratura dei rating: sottraggo la media di ciascun libro → Pearson similarity ≈ cosine similarity dei dati centrati.
+# Similarità item-item: calcolo la coseno tra libri letti dall’utente e tutti gli altri libri.
+# Top-k vicini: consideriamo solo i k libri più simili.
+# Predizione rating: media libro + media pesata dei rating dei libri simili.
+# Output: top-N libri raccomandati non ancora letti dall’utente target.
 
 import pandas as pd
+import numpy as np
+from scipy.sparse import csr_matrix
+from sklearn.metrics.pairwise import cosine_similarity
 
-def item_based_cf(user_id):
-    ratings_explicit_mod = pd.read_csv('C:/Users/alemo/OneDrive/Lavoro/progetto_sii_be/dataset_mod/ratings_explicit_mod.csv')
-    # Find similar items
-    similar_items = find_similar_items(ratings_explicit_mod, user_id)
-    top_similar_items = similar_items[:100]  # Top 100 similar items with positive similarity
-    # Predict ratings for books not yet rated by the user
-    user_rated_books = set(get_books_rated_by_user(user_id, ratings_explicit_mod))
-    all_books = set(ratings_explicit_mod['ISBN'].unique())
-    books_to_predict = all_books - user_rated_books
-    predicted_ratings = calculate_predictions(user_id, books_to_predict, top_similar_items, ratings_explicit_mod)
-    return predicted_ratings[:10]  # Return top 10 recommendations
+def build_item_user_matrix(ratings: pd.DataFrame):
+    """
+    Costruisce la matrice item × user (sparse matrix) a partire dal dataframe ratings.
+    Ogni riga = un libro, ogni colonna = un utente, ogni cella = rating dato dall’utente a quel libro.
 
-def find_similar_items(ratings_matrix, user_id):
-    user_rated_books = get_books_rated_by_user(user_id, ratings_matrix)
-    all_books = ratings_matrix['ISBN'].unique()
-    all_books = [b for b in all_books if b not in user_rated_books]
-    similarities = []
-    for other_book in all_books:
-        for user_book in user_rated_books:
-            similarity = calculate_item_similarity(other_book, user_book, ratings_matrix)
-            similarities.append((other_book, similarity))
-    # Sort by similarity score
-    similarities.sort(key=lambda x: x[1], reverse=True)
-    # Remove negative similarities
-    similarities = [(b, sim) for b, sim in similarities if sim > 0]
-    return similarities
+    Parameters
+    ----------
+    ratings : pd.DataFrame
+        DataFrame con almeno 3 colonne: 'User-ID', 'ISBN', 'Book-Rating'.
 
-def calculate_item_similarity(item1_isbn, item2_isbn, ratings_explicit_mod):
-    # Find users who rated both items
-    users_who_rated_both = get_users_who_rated_books([item1_isbn, item2_isbn], ratings_explicit_mod)
-    if not users_who_rated_both:
-        return 0  # No common raters, similarity is 0
-    item1_avg_rating = calculate_item_average_rating(item1_isbn, ratings_explicit_mod)
-    item2_avg_rating = calculate_item_average_rating(item2_isbn, ratings_explicit_mod)
-    item_similarity_numerator = calculate_item_similarity_numerator(item1_isbn, item2_isbn, users_who_rated_both, item1_avg_rating, item2_avg_rating, ratings_explicit_mod)
-    item_similarity_denominator = calculate_item_similarity_denominator(item1_isbn, item2_isbn, users_who_rated_both, item1_avg_rating, item2_avg_rating, ratings_explicit_mod)
-    if item_similarity_denominator == 0:
-        return 0
-    return item_similarity_numerator / item_similarity_denominator
+    Returns
+    -------
+    mat : csr_matrix
+        Matrice sparsa item × user con i rating.
+    item_mapping : dict
+        Dizionario che mappa indici interi → ISBN originali.
+    user_mapping : dict
+        Dizionario che mappa indici interi → ID utente originali.
+    """
 
-def get_books_rated_by_user(user_id, ratings_explicit_mod):
-    user_ratings = ratings_explicit_mod[ratings_explicit_mod['User-ID'] == user_id]
-    return user_ratings['ISBN'].tolist()
+    # Convertiamo 'User-ID' e 'ISBN' in categorie numeriche
+    user_ids = ratings['User-ID'].astype('category')
+    item_ids = ratings['ISBN'].astype('category')
 
-def get_users_who_rated_books(book_isbns, ratings_explicit_mod):
-    users = ratings_explicit_mod[ratings_explicit_mod['ISBN'].isin(book_isbns)]['User-ID'].unique()
-    return users.tolist()
+    # Dizionari per tornare da indici numerici agli ID originali
+    user_mapping = dict(enumerate(user_ids.cat.categories))
+    item_mapping = dict(enumerate(item_ids.cat.categories))
 
-def get_users_who_rated_book(book_isbn, ratings_explicit_mod):
-    users = ratings_explicit_mod[ratings_explicit_mod['ISBN'] == book_isbn]['User-ID'].unique()
-    return users.tolist()
+    # Creiamo matrice sparsa item × user
+    mat = csr_matrix(
+        (ratings['Book-Rating'].astype(float),
+         (item_ids.cat.codes, user_ids.cat.codes))
+    )
 
-def get_user_rating(user_id, book_isbn, ratings_explicit_mod):
-    user_rating = ratings_explicit_mod[(ratings_explicit_mod['User-ID'] == user_id) & (ratings_explicit_mod['ISBN'] == book_isbn)]
-    if not user_rating.empty:
-        return user_rating.iloc[0]['Book-Rating']
-    return None
+    return mat, item_mapping, user_mapping
 
-def calculate_user_average_rating(user_id, ratings_explicit_mod):
-    user_ratings = ratings_explicit_mod[ratings_explicit_mod['User-ID'] == user_id]
-    if not user_ratings.empty:
-        return user_ratings['Book-Rating'].mean()
-    return 0
 
-def calculate_item_average_rating(item_isbn, ratings_explicit_mod):
-    item_ratings = ratings_explicit_mod[ratings_explicit_mod['ISBN'] == item_isbn]
-    if not item_ratings.empty:
-        return item_ratings['Book-Rating'].mean()
-    return 0
+def item_based_cf(user_id, ratings, k=50, top_n=10):
+    """
+    Sistema di raccomandazione Item-based CF con Pearson correlation.
+    L’idea è:
+        - trovare libri simili a quelli già valutati dall’utente
+        - predire rating sui libri non ancora letti
+        - restituire i top-N libri raccomandati
 
-def calculate_item_similarity_numerator(item1_isbn, item2_isbn, users_who_rated_both, item1_avg_rating, item2_avg_rating, ratings_explicit_mod):
-    numerator = 0
-    for user_id in users_who_rated_both:
-        rating_item1 = get_user_rating(user_id, item1_isbn, ratings_explicit_mod)
-        rating_item2 = get_user_rating(user_id, item2_isbn, ratings_explicit_mod)
-        numerator += (rating_item1 - item1_avg_rating) * (rating_item2 - item2_avg_rating)
-    return numerator
+    Parameters
+    ----------
+    user_id : int o str
+        ID dell’utente target.
+    ratings : pd.DataFrame
+        DataFrame con colonne ['User-ID', 'ISBN', 'Book-Rating'].
+    k : int, default=50
+        Numero di item simili da considerare per ciascun libro.
+    top_n : int, default=10
+        Numero di libri da raccomandare.
 
-def calculate_item_similarity_denominator(item1_isbn, item2_isbn, users_who_rated_both, item1_avg_rating, item2_avg_rating, ratings_explicit_mod):
-    sum1 = sum((get_user_rating(user_id, item1_isbn, ratings_explicit_mod) - item1_avg_rating) ** 2 for user_id in users_who_rated_both)
-    sum2 = sum((get_user_rating(user_id, item2_isbn, ratings_explicit_mod) - item2_avg_rating) ** 2 for user_id in users_who_rated_both)
-    return (sum1 ** 0.5) * (sum2 ** 0.5)
+    Returns
+    -------
+    recommendations : list of tuples
+        Lista di tuple (ISBN, punteggio previsto), ordinate per punteggio decrescente.
+    """
 
-def calculate_prediction(user_id, isbn, similar_items, ratings_explicit_mod):
-    numerator = 0
-    denominator = 0
-    for other_item_isbn, similarity in similar_items:
-        other_item_rating = get_user_rating(user_id, other_item_isbn, ratings_explicit_mod)
-        if other_item_rating is not None:
-            numerator += similarity * (other_item_rating - calculate_item_average_rating(other_item_isbn, ratings_explicit_mod))
-            denominator += abs(similarity) # Use absolute similarity to avoid negative influence
-    if denominator == 0:
-        return calculate_user_average_rating(user_id, ratings_explicit_mod)
-    return calculate_item_average_rating(isbn, ratings_explicit_mod) + (numerator / denominator)
+    # 1. Costruiamo la matrice item × user
+    mat, item_mapping, user_mapping = build_item_user_matrix(ratings)
 
-def calculate_predictions(user_id, books_to_predict, similar_items, ratings_explicit_mod):
+    # 2. Troviamo l’indice numerico dell’utente target
+    user_index = list(user_mapping.keys())[list(user_mapping.values()).index(user_id)]
+
+    # 3. Individuiamo tutti i libri valutati dall’utente target
+    rated_items = mat[:, user_index].nonzero()[0]  # righe = libri
+
+    # 4. Centriamo i rating di ciascun libro sulla media del libro (Pearson)
+    #    In Item-based CF la Pearson similarity è cosine dei rating centrati
+    item_means = np.array(mat.sum(axis=1)).flatten() / (mat != 0).sum(axis=1).A1
+    mat_centered = mat.copy().astype(float)
+    for i in range(mat.shape[0]):
+        cols = mat_centered[i].nonzero()[1]  # colonne = utenti che hanno valutato il libro
+        mat_centered[i, cols] -= item_means[i]
+
+    # 5. Calcoliamo la similarità coseno tra tutti i libri valutati dall’utente e tutti gli altri libri
+    #    Useremo queste similarità per predire nuovi rating
+    #    La matrice di similarità può essere calcolata solo per le righe interessate
+    recommendations_dict = {}
+    for item_idx in rated_items:
+        similarities = cosine_similarity(mat_centered[item_idx], mat_centered).flatten()
+
+        # 6. Ordiniamo i libri per similarità decrescente
+        similar_items_idx = np.argsort(similarities)[::-1]
+
+        # 7. Prendiamo solo i primi k libri più simili (escluso il libro stesso)
+        similar_items_idx = [i for i in similar_items_idx if i != item_idx][:k]
+
+        # 8. Predizione rating per ciascun libro non ancora valutato dall’utente
+        for sim_item_idx in similar_items_idx:
+            if sim_item_idx in rated_items:
+                continue  # Skip libri già letti
+            sim = similarities[sim_item_idx]
+            # Weight = similarità * (rating libro simile - media libro simile)
+            pred = sim * (mat[sim_item_idx, user_index] - item_means[sim_item_idx])
+            if sim_item_idx in recommendations_dict:
+                recommendations_dict[sim_item_idx]['numerator'] += pred
+                recommendations_dict[sim_item_idx]['denominator'] += abs(sim)
+            else:
+                recommendations_dict[sim_item_idx] = {'numerator': pred, 'denominator': abs(sim)}
+
+    # 9. Calcoliamo il rating previsto finale per ciascun libro
     predictions = []
-    for book in books_to_predict:
-        predicted_rating = calculate_prediction(user_id, book, similar_items, ratings_explicit_mod)
-        predictions.append((book, predicted_rating))
+    for item_idx, vals in recommendations_dict.items():
+        if vals['denominator'] > 0:
+            predicted_rating = item_means[item_idx] + vals['numerator'] / vals['denominator']
+            predictions.append((item_idx, predicted_rating))
+
+    # 10. Ordiniamo le predizioni e prendiamo le top-N
     predictions.sort(key=lambda x: x[1], reverse=True)
-    return predictions
+    top_predictions = predictions[:top_n]
+
+    # 11. Convertiamo gli indici in ISBN originali
+    inv_item_mapping = {v: k for k, v in item_mapping.items()}
+    recommendations = [(inv_item_mapping[i], score) for i, score in top_predictions]
+
+    return recommendations
+
+# Esempio di utilizzo:
+ratings = pd.read_csv("ratings_explicit_mod.csv")
+
+recommendations = item_based_cf(user_id=276729, ratings=ratings, k=50, top_n=10)
+
+print("Raccomandazioni Item-based per l’utente 276729:")
+for isbn, score in recommendations:
+    print(isbn, score)
