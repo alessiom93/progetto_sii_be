@@ -65,7 +65,7 @@ print('Books missing values:\n', books.isnull().sum(), '\n')
 print('Users missing values:\n', users.isnull().sum(), '\n')
 print('Ratings missing values:\n', ratings.isnull().sum(), '\n')
 
-# Remove users and books with less than 10 ratings, and then from ratings
+# Remove users and books with less than 100 ratings, and then from ratings
 ratings, users, books = filter_users_and_books(ratings, users, books, min_ratings=10)
 
 print("Final ratings shape:", ratings.shape)
