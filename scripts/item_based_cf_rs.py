@@ -5,105 +5,128 @@ from sklearn.metrics.pairwise import cosine_similarity
 
 def build_item_user_matrix(ratings: pd.DataFrame):
     """
-    Costruisce la matrice item × user (sparse) dai rating.
+    Costruisce la matrice item × user (libri × utenti) come csr_matrix.
     
-    Ogni riga = un libro
-    Ogni colonna = un utente
-    Cella = rating dato dall'utente (0 se non valutato)
+    Parametri
+    ----------
+    ratings : pd.DataFrame
+        Deve contenere almeno ['User-ID', 'ISBN', 'Book-Rating']
     
-    Ritorna:
-        mat : csr_matrix
-            Matrice sparsa item × user
-        item_mapping : dict
-            Indice numerico → ISBN
-        user_mapping : dict
-            Indice numerico → User-ID
+    Ritorna
+    -------
+    mat : csr_matrix
+        Matrice sparsa item × user
+    item_mapping : dict
+        Mappa indice numerico -> ISBN
+    user_mapping : dict
+        Mappa indice numerico -> User-ID
+    item_codes : dict
+        Mappa ISBN -> indice numerico
+    user_codes : dict
+        Mappa User-ID -> indice numerico
     """
+    ratings = ratings.copy()
     ratings['User-ID'] = ratings['User-ID'].astype(str)
     ratings['ISBN'] = ratings['ISBN'].astype(str)
-    
-    user_ids = ratings['User-ID'].astype('category')
-    item_ids = ratings['ISBN'].astype('category')
-    
-    item_mapping = dict(enumerate(item_ids.cat.categories))
-    user_mapping = dict(enumerate(user_ids.cat.categories))
-    
+
+    item_cat = ratings['ISBN'].astype('category')
+    user_cat = ratings['User-ID'].astype('category')
+
+    item_mapping = dict(enumerate(item_cat.cat.categories))
+    user_mapping = dict(enumerate(user_cat.cat.categories))
+    item_codes = dict(zip(item_cat.cat.categories, item_cat.cat.codes))
+    user_codes = dict(zip(user_cat.cat.categories, user_cat.cat.codes))
+
     mat = csr_matrix(
         (ratings['Book-Rating'].astype(float),
-         (item_ids.cat.codes, user_ids.cat.codes))
+         (item_cat.cat.codes, user_cat.cat.codes)),
+        shape=(len(item_mapping), len(user_mapping))
     )
-    
-    return mat, item_mapping, user_mapping
 
-def item_based_cf(user_id, ratings, k=50, top_n=10, min_rating=0, max_rating=10):
+    return mat, item_mapping, user_mapping, item_codes, user_codes
+
+
+def item_based_cf(
+    user_id, 
+    ratings: pd.DataFrame, 
+    k=50, 
+    top_n=10, 
+    min_common=1, 
+    min_rating=0, 
+    max_rating=10
+):
     """
-    Raccomandazioni Item-based CF con Pearson correlation
-    (tramite cosine similarity su matrice centrata per libro).
-    
-    Parametri:
-        user_id : int o str
-            ID utente target
-        ratings : pd.DataFrame
-            Colonne ['User-ID', 'ISBN', 'Book-Rating']
-        k : int
-            Numero di libri simili da considerare
-        top_n : int
-            Numero di libri da raccomandare
-        min_rating, max_rating : float
-            Limiti per clipping dei rating predetti
-    
-    Ritorna:
-        recommendations : list of tuples
-            Lista (ISBN, rating previsto) ordinata per rating decrescente
+    Sistema di raccomandazione Item-based CF con Pearson correlation.
+    Parallelo a user_based_cf.
+
+    Parametri
+    ----------
+    user_id : int o str
+        ID dell’utente target
+    ratings : pd.DataFrame
+        DataFrame con colonne ['User-ID', 'ISBN', 'Book-Rating']
+    k : int
+        Numero di libri simili da considerare
+    top_n : int
+        Numero di libri da raccomandare
+    min_common : int
+        Minimo numero di utenti in comune tra due libri per calcolare similarità
+    min_rating : float
+        Valore minimo del rating
+    max_rating : float
+        Valore massimo del rating
+
+    Ritorna
+    -------
+    recommendations : list of tuples
+        Lista di (ISBN, rating previsto) ordinata per rating decrescente
     """
-    # 1️⃣ Matrice item × user
-    mat, item_mapping, user_mapping = build_item_user_matrix(ratings)
-    
-    # 2️⃣ Controllo utente
+    # 1️⃣ Costruisco matrice item × user
+    mat, item_mapping, user_mapping, item_codes, user_codes = build_item_user_matrix(ratings)
+
+    # 2️⃣ Controllo che l'utente esista
     user_id = str(user_id)
-    if user_id not in user_mapping.values():
+    if user_id not in user_codes:
         raise ValueError(f"User ID {user_id} non presente nel dataset")
-    user_index = np.where(np.array(list(user_mapping.values())) == user_id)[0][0]
-    
-    # 3️⃣ Media rating per libro (centratura)
-    item_means = np.array(mat.sum(axis=1)).flatten() / (mat != 0).sum(axis=1).A1
-    
-    # 4️⃣ Centriamo solo righe con rating non-zero
-    mat_centered = mat.copy().astype(float)
-    for i in range(mat.shape[0]):
-        start, end = mat_centered.indptr[i], mat_centered.indptr[i+1]
-        if start < end:
-            mat_centered.data[start:end] -= item_means[i]
-    
-    # 5️⃣ Libri già valutati dall'utente target
+    user_index = user_codes[user_id]
+
+    # 3️⃣ Trovo tutti i libri già valutati dall’utente
     user_rated_items = mat[:, user_index].nonzero()[0]
-    all_items = set(range(mat.shape[0]))
-    items_to_predict = list(all_items - set(user_rated_items))
-    
-    # 6️⃣ Predizione dei rating per libri non valutati
+
+    # 4️⃣ Calcolo similarità tra tutti gli item (libri)
+    #    Cosine similarity sulla matrice item × user
+    item_similarities = cosine_similarity(mat)
+
+    # 5️⃣ Predizione dei rating
     preds = {}
-    for item in items_to_predict:
-        # Trovo tutti i libri che l’utente ha già valutato
-        rated_books = user_rated_items
-        # Calcolo similarità coseno tra il libro target e tutti i libri valutati dall’utente
-        sim = cosine_similarity(mat_centered[item], mat_centered[rated_books]).flatten()
-        
-        # Numeratore e denominatore per media pesata
+    for item in range(mat.shape[0]):
+        if item in user_rated_items:
+            continue  # skip libri già valutati
+        # Trovo i libri più simili che l'utente ha già valutato
+        sims = item_similarities[item, user_rated_items]
+        if len(sims) < min_common:
+            continue  # skip se non ci sono abbastanza utenti in comune
+        top_k_idx = np.argsort(sims)[::-1][:k]
+        top_similar_items = user_rated_items[top_k_idx]
+        top_similarities = sims[top_k_idx]
+
+        # Rating predetto come media pesata
         num, den = 0.0, 0.0
-        for j, s in zip(rated_books, sim):
-            rating = mat[j, user_index]
+        for sim_item, sim in zip(top_similar_items, top_similarities):
+            rating = mat[sim_item, user_index]
             if rating != 0:
-                num += s * (rating - item_means[j])
-                den += abs(s)
+                num += sim * rating
+                den += abs(sim)
         if den > 0:
-            pred = item_means[item] + num / den
-            pred = max(min_rating, min(max_rating, pred))
-            preds[item] = pred
-    
-    # 7️⃣ Ordino e prendo top N
+            pred_rating = num / den
+            # Clipping ai valori min/max
+            pred_rating = max(min_rating, min(max_rating, pred_rating))
+            preds[item] = pred_rating
+
+    # 6️⃣ Ordino e prendo top N
     top_items = sorted(preds.items(), key=lambda x: x[1], reverse=True)[:top_n]
-    
-    # 8️⃣ Mappa indici numerici → ISBN
+
+    # 7️⃣ Mappo indici numerici in ISBN originali
     recommendations = [(item_mapping[i], score) for i, score in top_items]
-    
+
     return recommendations
