@@ -17,13 +17,13 @@ if __name__ == "__main__":
     # Parametri personalizzati
     results = compare_user_item_cf(
         users_df, books_df, ratings_df,
-        top_n=20,
-        sample_n_users=100,
-        k=200,
+        top_n=50, # numero di raccomandazioni per utente
+        sample_n_users=400, # numero di utenti campionati per il test
+        k=400, # numero di vicini considerati
         use_dense=True,
-        n_users=50,
-        n_items=50,
-        n_ratings=2000,
+        n_users=700, # numero di utenti nel sotto-dataset denso
+        n_items=700, # numero di libri nel sotto-dataset denso
+        n_ratings=int(0.85 * 700 * 700), # numero di valutazioni nel sotto-dataset denso
         use_parallel=True,
         max_workers=16  # sfrutta tutti i core disponibili
     )
