@@ -3,6 +3,7 @@ import pandas as pd
 from sklearn.metrics.pairwise import cosine_similarity
 from scipy.sparse import csr_matrix
 import logging
+from concurrent.futures import ProcessPoolExecutor, as_completed  # ✅ cambiamo da Thread a Process
 
 logger = logging.getLogger(__name__)
 
@@ -17,10 +18,10 @@ def build_user_item_matrix(ratings: pd.DataFrame):
     user_cat = ratings['User-ID'].astype('category')
     item_cat = ratings['ISBN'].astype('category')
 
-    user_mapping = dict(enumerate(user_cat.cat.categories))   # index -> User-ID
-    item_mapping = dict(enumerate(item_cat.cat.categories))   # index -> ISBN
-    user_codes = dict(zip(user_cat.cat.categories, user_cat.cat.codes))  # User-ID -> index
-    item_codes = dict(zip(item_cat.cat.categories, item_cat.cat.codes))  # ISBN -> index
+    user_mapping = dict(enumerate(user_cat.cat.categories))
+    item_mapping = dict(enumerate(item_cat.cat.categories))
+    user_codes = dict(zip(user_cat.cat.categories, user_cat.cat.codes))
+    item_codes = dict(zip(item_cat.cat.categories, item_cat.cat.codes))
 
     mat = csr_matrix(
         (ratings['Book-Rating'].astype(float),
@@ -40,7 +41,6 @@ def user_based_cf(user_id, ratings: pd.DataFrame, k=50, top_n=10, min_common=1, 
             return []
 
         user_index = int(user_codes[user_id])
-
         counts = (mat != 0).sum(axis=1).A1
         sums = np.array(mat.sum(axis=1)).flatten()
         user_means = np.where(counts > 0, sums / counts, 0.0)
@@ -119,7 +119,6 @@ def item_based_cf(user_id, ratings: pd.DataFrame, k=50, top_n=10):
             return []
 
         sims = cosine_similarity(mat.T, mat.T)
-
         scores = {}
         for item in rated_items:
             sim_items = np.argsort(sims[item])[::-1]
@@ -162,7 +161,6 @@ def sample_dense_subset(ratings_df, n_users=20, n_items=20, n_ratings=200, rando
     n_ratings = min(n_ratings, max_possible, len(subset))
 
     subset = subset.sample(n=n_ratings, random_state=random_state)
-
     density = n_ratings / max_possible if max_possible > 0 else 0
     logger.debug(f"[DEBUG] Subset campionato: {subset.shape[0]} righe, {subset['User-ID'].nunique()} utenti, {subset['ISBN'].nunique()} item, densità={density:.2f}")
 
@@ -180,7 +178,6 @@ def evaluate_recommendations(preds_dict, test_user_items, top_n=10):
         true_items = test_user_items.get(u, set())
         hits = len(set(recs_top) & true_items)
         hit_count += hits
-
         precision_list.append(hits / top_n if top_n > 0 else 0)
         recall_list.append(hits / len(true_items) if len(true_items) > 0 else 0)
 
@@ -191,12 +188,34 @@ def evaluate_recommendations(preds_dict, test_user_items, top_n=10):
     return {"hit_rate": hit_rate, "precision": precision, "recall": recall}
 
 # -----------------------------
+# Helper: parallel execution con ProcessPoolExecutor
+# -----------------------------
+def parallel_recommendations(func, users, train_df, k, top_n, max_workers=16):
+    """
+    Parallelizza il calcolo delle raccomandazioni usando processi separati.
+    Sicuro su Windows/macOS.
+    """
+    results = {}
+    with ProcessPoolExecutor(max_workers=max_workers) as executor:
+        futures = {executor.submit(func, u, train_df, k, top_n): u for u in users}
+        for future in as_completed(futures):
+            u = futures[future]
+            try:
+                results[str(u)] = future.result()
+            except Exception as e:
+                logger.warning(f"[ParallelProcess] Errore per utente {u}: {e}")
+    return results
+
+# -----------------------------
 # Confronto algoritmi
 # -----------------------------
 def compare_user_item_cf(users_df, books_df, ratings_df, top_n=10, sample_n_users=500, k=200,
-                         use_dense=True, n_users=500, n_items=500, n_ratings=150000):
+                         use_dense=True, n_users=500, n_items=500, n_ratings=150000,
+                         use_parallel=True, max_workers=16):
     try:
         logger.info("Comparing user-based and item-based CF...")
+        logger.info(f"Original ratings shape: {ratings_df.shape}")
+        logger.info(f"Parameters: top_n={top_n}, sample_n_users={sample_n_users}, k={k}, use_dense={use_dense}, n_users={n_users}, n_items={n_items}, n_ratings={n_ratings}, use_parallel={use_parallel}, max_workers={max_workers}")
 
         if use_dense:
             ratings_df = sample_dense_subset(ratings_df, n_users=n_users, n_items=n_items, n_ratings=n_ratings)
@@ -205,19 +224,20 @@ def compare_user_item_cf(users_df, books_df, ratings_df, top_n=10, sample_n_user
         sampled_users = np.random.choice(all_users, size=min(sample_n_users, len(all_users)), replace=False)
 
         test_user_items = {}
-        preds_user, preds_item = {}, {}
-
         for uid in sampled_users:
             user_ratings = ratings_df[ratings_df['User-ID'] == uid]
             if len(user_ratings) < 2:
                 continue
-
             test_items = set(user_ratings.sample(frac=0.2, random_state=42)['ISBN'])
             train_ratings = ratings_df.drop(user_ratings[user_ratings['ISBN'].isin(test_items)].index)
             test_user_items[str(uid)] = test_items
 
-            preds_user[str(uid)] = user_based_cf(uid, train_ratings, k=k, top_n=top_n)
-            preds_item[str(uid)] = item_based_cf(uid, train_ratings, k=k, top_n=top_n)
+        if use_parallel:
+            preds_user = parallel_recommendations(user_based_cf, sampled_users, ratings_df, k, top_n, max_workers)
+            preds_item = parallel_recommendations(item_based_cf, sampled_users, ratings_df, k, top_n, max_workers)
+        else:
+            preds_user = {str(u): user_based_cf(u, ratings_df, k=k, top_n=top_n) for u in sampled_users}
+            preds_item = {str(u): item_based_cf(u, ratings_df, k=k, top_n=top_n) for u in sampled_users}
 
         user_metrics = evaluate_recommendations(preds_user, test_user_items, top_n=top_n)
         item_metrics = evaluate_recommendations(preds_item, test_user_items, top_n=top_n)
