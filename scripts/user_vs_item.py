@@ -1,249 +1,231 @@
-# compare_cf_models.py
-
-import pandas as pd
 import numpy as np
-from scipy.sparse import csr_matrix
+import pandas as pd
 from sklearn.metrics.pairwise import cosine_similarity
-from sklearn.model_selection import train_test_split
+from scipy.sparse import csr_matrix
+import logging
 
-# --------------------------------------------
-# FUNZIONI COMUNI
-# --------------------------------------------
+logger = logging.getLogger(__name__)
 
+# -----------------------------
+# Utility: build user-item matrix
+# -----------------------------
 def build_user_item_matrix(ratings: pd.DataFrame):
-    """Costruisce la matrice utente x item (sparse) dai rating."""
+    ratings = ratings.copy()
     ratings['User-ID'] = ratings['User-ID'].astype(str)
     ratings['ISBN'] = ratings['ISBN'].astype(str)
 
-    user_ids = ratings['User-ID'].astype('category')
-    item_ids = ratings['ISBN'].astype('category')
+    user_cat = ratings['User-ID'].astype('category')
+    item_cat = ratings['ISBN'].astype('category')
 
-    user_mapping = dict(enumerate(user_ids.cat.categories))
-    item_mapping = dict(enumerate(item_ids.cat.categories))
+    user_mapping = dict(enumerate(user_cat.cat.categories))   # index -> User-ID
+    item_mapping = dict(enumerate(item_cat.cat.categories))   # index -> ISBN
+    user_codes = dict(zip(user_cat.cat.categories, user_cat.cat.codes))  # User-ID -> index
+    item_codes = dict(zip(item_cat.cat.categories, item_cat.cat.codes))  # ISBN -> index
 
     mat = csr_matrix(
         (ratings['Book-Rating'].astype(float),
-         (user_ids.cat.codes, item_ids.cat.codes))
+         (user_cat.cat.codes, item_cat.cat.codes)),
+        shape=(len(user_mapping), len(item_mapping))
     )
+    return mat, user_mapping, item_mapping, user_codes, item_codes
 
-    return mat, user_mapping, item_mapping
-
-# --------------------------------------------
-# USER-BASED CF
-# --------------------------------------------
-
-def user_based_cf(user_id, ratings, k=50, top_n=10):
-    """
-    Raccomandazioni User-based CF con gestione errori.
-
-    Se l'utente non ha vicini validi o non si possono predire libri,
-    ritorna lista vuota invece di crashare.
-    """
+# -----------------------------
+# User-based CF
+# -----------------------------
+def user_based_cf(user_id, ratings: pd.DataFrame, k=50, top_n=10, min_common=1, min_rating=0, max_rating=10):
     try:
-        # Costruisco matrice utente × item
-        mat, user_mapping, item_mapping = build_user_item_matrix(ratings)
-
-        # Mappa inversa
-        index_to_user = {v: k for k, v in user_mapping.items()}
-        index_to_item = {v: k for k, v in item_mapping.items()}
-
+        mat, user_mapping, item_mapping, user_codes, item_codes = build_user_item_matrix(ratings)
         user_id = str(user_id)
-        if user_id not in index_to_user:
-            return []  # utente non trovato
+        if user_id not in user_codes:
+            return []
 
-        user_index = index_to_user[user_id]
+        user_index = int(user_codes[user_id])
 
-        # Media rating di ogni utente
-        user_means = np.array(mat.sum(axis=1)).flatten() / np.maximum((mat != 0).sum(axis=1).A1, 1)
+        counts = (mat != 0).sum(axis=1).A1
+        sums = np.array(mat.sum(axis=1)).flatten()
+        user_means = np.where(counts > 0, sums / counts, 0.0)
 
-        # Centriamo i rating
         mat_centered = mat.copy().astype(float)
-        for u in range(mat.shape[0]):
-            start, end = mat_centered.indptr[u], mat_centered.indptr[u + 1]
+        for u in range(mat_centered.shape[0]):
+            start, end = mat_centered.indptr[u], mat_centered.indptr[u+1]
             if start < end:
-                mat_centered.data[start:end] -= user_means[u]
+                mat_centered.data[start:end] -= float(user_means[u])
 
-        # Similarità coseno
-        similarities = cosine_similarity(mat_centered[user_index], mat_centered).flatten()
+        target_row = mat_centered.getrow(user_index)
+        if target_row.nnz == 0:
+            return []
 
-        # Vicini più simili
-        similar_users = np.argsort(similarities)[::-1]
-        similar_users = [u for u in similar_users if u != user_index][:k]
+        similarities = cosine_similarity(target_row, mat_centered).flatten()
 
-        # Libri non valutati
-        user_rated_items = mat[user_index].nonzero()[1]
-        all_items = set(range(mat.shape[1]))
-        items_to_predict = list(all_items - set(user_rated_items))
+        candidates = np.argsort(similarities)[::-1]
+        neighbors = []
+        for v in candidates:
+            if int(v) == int(user_index):
+                continue
+            common = np.intersect1d(mat.getrow(user_index).nonzero()[1], mat.getrow(int(v)).nonzero()[1])
+            if len(common) < int(min_common):
+                continue
+            neighbors.append(int(v))
+            if len(neighbors) >= k:
+                break
+
+        if not neighbors:
+            return []
+
+        user_rated = set(mat.getrow(user_index).nonzero()[1].tolist())
+        all_items = range(mat.shape[1])
+        items_to_predict = [int(i) for i in all_items if i not in user_rated]
 
         preds = {}
         for item in items_to_predict:
             num, den = 0.0, 0.0
-            for u in similar_users:
-                rating = mat[u, item]
-                if rating != 0:
-                    sim = float(similarities[u])
-                    num += sim * (rating - user_means[u])
+            for u in neighbors:
+                row = mat.getrow(int(u)).toarray()[0]
+                rating = float(row[int(item)])
+                if rating != 0.0:
+                    sim = float(similarities[int(u)])
+                    num += sim * (rating - float(user_means[int(u)]))
                     den += abs(sim)
             if den > 0:
-                preds[item] = user_means[user_index] + num / den
+                pred = float(user_means[user_index]) + (num / den)
+                pred = max(min_rating, min(max_rating, pred))
+                preds[item] = pred
 
         if not preds:
             return []
 
         top_items = sorted(preds.items(), key=lambda x: x[1], reverse=True)[:top_n]
-        recommendations = [(index_to_item[i], score) for i, score in top_items]
-
+        recommendations = [(item_mapping[int(i)], float(score)) for i, score in top_items]
         return recommendations
 
     except Exception as e:
-        # Qui logghi, ma non blocchi il processo
-        print(f"User-based CF error for user {user_id}: {e}")
+        logger.error(f"User-based CF internal error for user {user_id}: {e}")
         return []
 
-
-# --------------------------------------------
-# ITEM-BASED CF
-# --------------------------------------------
-
-def item_based_cf(user_id, ratings, k=50, top_n=10):
-    """
-    Raccomandazioni Item-based CF con gestione errori.
-
-    Se non si trovano item simili o ci sono inconsistenze,
-    ritorna lista vuota invece di crashare.
-    """
+# -----------------------------
+# Item-based CF (semplice)
+# -----------------------------
+def item_based_cf(user_id, ratings: pd.DataFrame, k=50, top_n=10):
     try:
-        mat, user_mapping, item_mapping = build_user_item_matrix(ratings)
-
-        index_to_user = {v: k for k, v in user_mapping.items()}
-        index_to_item = {v: k for k, v in item_mapping.items()}
-
+        mat, user_mapping, item_mapping, user_codes, item_codes = build_user_item_matrix(ratings)
         user_id = str(user_id)
-        if user_id not in index_to_user:
+        if user_id not in user_codes:
             return []
 
-        user_index = index_to_user[user_id]
-
-        # Indici degli item valutati dall'utente
-        user_rated_items = mat[user_index].nonzero()[1]
-        if len(user_rated_items) == 0:
+        user_index = int(user_codes[user_id])
+        user_row = mat.getrow(user_index)
+        rated_items = user_row.nonzero()[1]
+        if len(rated_items) == 0:
             return []
 
-        # Similarità item × item
-        similarities = cosine_similarity(mat.T, mat.T)
+        sims = cosine_similarity(mat.T, mat.T)
 
-        preds = {}
-        for item in range(mat.shape[1]):
-            if item in user_rated_items:
+        scores = {}
+        for item in rated_items:
+            sim_items = np.argsort(sims[item])[::-1]
+            count = 0
+            for sim_item in sim_items:
+                if sim_item == item:
+                    continue
+                if sim_item in rated_items:
+                    continue
+                scores[sim_item] = scores.get(sim_item, 0) + sims[item, sim_item]
+                count += 1
+                if count >= k:
+                    break
+
+        if not scores:
+            return []
+
+        top_items = sorted(scores.items(), key=lambda x: x[1], reverse=True)[:top_n]
+        recommendations = [(item_mapping[int(i)], float(score)) for i, score in top_items]
+        return recommendations
+
+    except Exception as e:
+        logger.error(f"Item-based CF internal error for user {user_id}: {e}")
+        return []
+
+# -----------------------------
+# Campionamento denso/sparso
+# -----------------------------
+def sample_dense_subset(ratings_df, n_users=20, n_items=20, n_ratings=200, random_state=42):
+    np.random.seed(random_state)
+
+    top_users = ratings_df["User-ID"].value_counts().head(n_users).index
+    top_items = ratings_df["ISBN"].value_counts().head(n_items).index
+
+    subset = ratings_df[
+        ratings_df["User-ID"].isin(top_users) & ratings_df["ISBN"].isin(top_items)
+    ]
+
+    max_possible = n_users * n_items
+    n_ratings = min(n_ratings, max_possible, len(subset))
+
+    subset = subset.sample(n=n_ratings, random_state=random_state)
+
+    density = n_ratings / max_possible if max_possible > 0 else 0
+    logger.debug(f"[DEBUG] Subset campionato: {subset.shape[0]} righe, {subset['User-ID'].nunique()} utenti, {subset['ISBN'].nunique()} item, densità={density:.2f}")
+
+    return subset.reset_index(drop=True)
+
+# -----------------------------
+# Valutazione
+# -----------------------------
+def evaluate_recommendations(preds_dict, test_user_items, top_n=10):
+    hit_count = 0
+    precision_list, recall_list = [], []
+
+    for u, recs in preds_dict.items():
+        recs_top = [isbn for isbn, _ in recs[:top_n]]
+        true_items = test_user_items.get(u, set())
+        hits = len(set(recs_top) & true_items)
+        hit_count += hits
+
+        precision_list.append(hits / top_n if top_n > 0 else 0)
+        recall_list.append(hits / len(true_items) if len(true_items) > 0 else 0)
+
+    hit_rate = hit_count / sum(len(v) for v in test_user_items.values()) if test_user_items else 0
+    precision = np.nanmean(precision_list) if precision_list else 0
+    recall = np.nanmean(recall_list) if recall_list else 0
+
+    return {"hit_rate": hit_rate, "precision": precision, "recall": recall}
+
+# -----------------------------
+# Confronto algoritmi
+# -----------------------------
+def compare_user_item_cf(users_df, books_df, ratings_df, top_n=10, sample_n_users=500, k=200,
+                         use_dense=True, n_users=500, n_items=500, n_ratings=150000):
+    try:
+        logger.info("Comparing user-based and item-based CF...")
+
+        if use_dense:
+            ratings_df = sample_dense_subset(ratings_df, n_users=n_users, n_items=n_items, n_ratings=n_ratings)
+
+        all_users = ratings_df['User-ID'].unique()
+        sampled_users = np.random.choice(all_users, size=min(sample_n_users, len(all_users)), replace=False)
+
+        test_user_items = {}
+        preds_user, preds_item = {}, {}
+
+        for uid in sampled_users:
+            user_ratings = ratings_df[ratings_df['User-ID'] == uid]
+            if len(user_ratings) < 2:
                 continue
 
-            num, den = 0.0, 0.0
-            for rated_item in user_rated_items:
-                if rated_item >= similarities.shape[0]:
-                    continue  # skip se indice fuori range
+            test_items = set(user_ratings.sample(frac=0.2, random_state=42)['ISBN'])
+            train_ratings = ratings_df.drop(user_ratings[user_ratings['ISBN'].isin(test_items)].index)
+            test_user_items[str(uid)] = test_items
 
-                sim = similarities[item, rated_item]
-                rating = mat[user_index, rated_item]
+            preds_user[str(uid)] = user_based_cf(uid, train_ratings, k=k, top_n=top_n)
+            preds_item[str(uid)] = item_based_cf(uid, train_ratings, k=k, top_n=top_n)
 
-                if sim > 0 and rating > 0:
-                    num += sim * rating
-                    den += sim
+        user_metrics = evaluate_recommendations(preds_user, test_user_items, top_n=top_n)
+        item_metrics = evaluate_recommendations(preds_item, test_user_items, top_n=top_n)
 
-            if den > 0:
-                preds[item] = num / den
-
-        if not preds:
-            return []
-
-        top_items = sorted(preds.items(), key=lambda x: x[1], reverse=True)[:top_n]
-        recommendations = [(index_to_item[i], score) for i, score in top_items]
-
-        return recommendations
+        results = {"user_based": user_metrics, "item_based": item_metrics}
+        logger.debug(f"Comparison results: {results}")
+        return results
 
     except Exception as e:
-        print(f"Item-based CF error for user {user_id}: {e}")
-        return []
-
-
-# --------------------------------------------
-# FUNZIONE DI VALUTAZIONE
-# --------------------------------------------
-
-import numpy as np
-from sklearn.metrics import precision_score, recall_score
-
-def compare_user_item_cf(ratings, top_n=10, sample_size=1000, seed=42):
-    """
-    Confronta User-based e Item-based CF usando dati di test.
-
-    Parameters
-    ----------
-    ratings : pd.DataFrame
-        DataFrame con ['User-ID', 'ISBN', 'Book-Rating']
-    top_n : int
-        Numero di raccomandazioni da generare
-    sample_size : int
-        Numero massimo di utenti da testare (per velocizzare)
-    seed : int
-        Random seed per riproducibilità
-
-    Returns
-    -------
-    dict
-        {
-            "user_based": {"precision": float, "recall": float},
-            "item_based": {"precision": float, "recall": float}
-        }
-    """
-
-    np.random.seed(seed)
-    unique_users = ratings['User-ID'].unique()
-    sampled_users = np.random.choice(unique_users, min(sample_size, len(unique_users)), replace=False)
-
-    user_precisions = []
-    user_recalls = []
-    item_precisions = []
-    item_recalls = []
-
-    # Iteriamo sugli utenti campionati
-    for user_id in sampled_users:
-        # --- Dati di test: prendiamo gli ultimi 10 rating dell'utente ---
-        user_ratings = ratings[ratings['User-ID'] == user_id].sort_values('Book-Rating')
-        test_books = user_ratings['ISBN'].values[-top_n:]
-        if len(test_books) < 2:
-            continue  # salta utenti troppo pochi rating
-
-        test_set = set(test_books)
-
-        # --- Raccomandazioni ---
-        user_recs = user_based_cf(user_id, ratings, top_n=top_n)
-        item_recs = item_based_cf(user_id, ratings, top_n=top_n)
-
-        # --- Pred/ground truth binarizzati ---
-        def binarize(recs):
-            rec_books = set([isbn for isbn, _ in recs])
-            y_true = [1 if b in test_set else 0 for b in rec_books]
-            y_pred = [1] * len(y_true)  # tutte le raccomandazioni sono considerate positive
-            return y_true, y_pred
-
-        if user_recs:
-            y_true, y_pred = binarize(user_recs)
-            user_precisions.append(precision_score(y_true, y_pred))
-            user_recalls.append(recall_score(y_true, y_pred))
-
-        if item_recs:
-            y_true, y_pred = binarize(item_recs)
-            item_precisions.append(precision_score(y_true, y_pred))
-            item_recalls.append(recall_score(y_true, y_pred))
-
-    return {
-        "user_based": {
-            "precision": np.mean(user_precisions) if user_precisions else 0.0,
-            "recall": np.mean(user_recalls) if user_recalls else 0.0
-        },
-        "item_based": {
-            "precision": np.mean(item_precisions) if item_precisions else 0.0,
-            "recall": np.mean(item_recalls) if item_recalls else 0.0
-        }
-    }
-
+        logger.error(f"Error comparing user-based and item-based CF: {e}")
+        return {}

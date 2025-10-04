@@ -140,13 +140,16 @@ def get_item_based_cf_rs():
             "message": "Failed to retrieve item-based CF recommendations"
         }), 500
 
+# creare un sotto-dataset piccolo, denso e con abbastanza overlap.
 from scripts.user_vs_item import compare_user_item_cf
 @app.route('/user_vs_item', methods=['GET'])
 def user_vs_item():
     print("Comparing user-based and item-based CF...")
     try:
         ratings_explicit_mod = pd.read_csv('C:/Users/alemo/OneDrive/Lavoro/progetto_sii_be/dataset_mod/ratings_explicit_mod.csv')
-        results = compare_user_item_cf(ratings_explicit_mod)
+        users_mod = pd.read_csv('C:/Users/alemo/OneDrive/Lavoro/progetto_sii_be/dataset_mod/users_mod.csv')
+        books_mod = pd.read_csv('C:/Users/alemo/OneDrive/Lavoro/progetto_sii_be/dataset_mod/books_mod.csv')
+        results = compare_user_item_cf(users_mod, books_mod, ratings_explicit_mod)
         print("Comparison results:", results)
         return jsonify({"results": results})
     except Exception as e:
