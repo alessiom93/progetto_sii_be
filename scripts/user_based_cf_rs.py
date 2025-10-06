@@ -90,6 +90,7 @@ def user_based_cf(
         if target_row.nnz == 0:
             return []
         # calcola la similarità coseno tra l'utente target e tutti gli altri utenti
+        # ritorna un array 1D con similarità
         similarities = cosine_similarity(target_row, mat_centered).flatten()
 
         # ordina gli utenti per similarità decrescente
