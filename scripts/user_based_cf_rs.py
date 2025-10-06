@@ -21,7 +21,7 @@ def build_user_item_matrix(ratings: pd.DataFrame):
     # conversione degli ID in stringhe per consistenza
     ratings['User-ID'] = ratings['User-ID'].astype(str)
     ratings['ISBN'] = ratings['ISBN'].astype(str)
-    # conversione delle colonne in categorie, ovvero in indici numerici, perchè più efficienti
+    # conversione dei valori in categorie, ovvero in indici numerici, perchè più efficienti
     user_cat = ratings['User-ID'].astype('category')
     item_cat = ratings['ISBN'].astype('category')
     # mapping tra indici numerici e ID originali
@@ -30,7 +30,7 @@ def build_user_item_matrix(ratings: pd.DataFrame):
     # mapping inversi da ID a indici numerici
     user_codes = dict(zip(user_cat.cat.categories, user_cat.cat.codes))  # User-ID -> index
     item_codes = dict(zip(item_cat.cat.categories, item_cat.cat.codes))  # ISBN -> index
-    # costruzione matrice user-item, righe=users, colonne=items
+    # costruzione matrice user-item, righe=users, colonne=items, valori=ratings
     # La matrice CSR è rappresentata da tre array: data (i ratings non nulli), indices (indici colonna della posizione dei ratings), indptr (indici di inizio/fine di ogni riga)
     mat = csr_matrix(
         (ratings['Book-Rating'].astype(float), # valori dei rating
@@ -42,11 +42,18 @@ def build_user_item_matrix(ratings: pd.DataFrame):
 
 # user-based collaborative filtering
 # input: user_id, dataframe con colonne User-ID, ISBN, Book-Rating
-#        k=numero di vicini, top_n=numero di raccomandazioni, min_common=minimo numero di item in comune
+#        k=numero di users vicini, top_n=numero di raccomandazioni, min_common=minimo numero di item in comune tra utenti
 #        min_rating, max_rating = range dei ratings
 # output: lista di tuple (ISBN, predicted_rating) ordinate per predicted_rating decrescente
 #         oppure lista vuota se non possibile fare raccomandazioni
-def user_based_cf(user_id, ratings: pd.DataFrame, k=50, top_n=10, min_common=1, min_rating=0, max_rating=10):
+def user_based_cf(
+    user_id, ratings: pd.DataFrame, 
+    k=50, 
+    top_n=10, 
+    min_common=1, 
+    min_rating=0, 
+    max_rating=10
+):
     try:
         # genera la matrice user-item e i mappings
         mat, user_mapping, item_mapping, user_codes, item_codes = build_user_item_matrix(ratings)
