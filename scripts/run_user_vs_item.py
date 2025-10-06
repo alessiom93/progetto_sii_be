@@ -11,15 +11,15 @@ if __name__ == "__main__":
 
     # Carica i CSV
     ratings_df = pd.read_csv('C:/Users/alemo/OneDrive/Lavoro/progetto_sii_be/dataset_mod/ratings_explicit_mod.csv')
-    users_df = pd.read_csv('C:/Users/alemo/OneDrive/Lavoro/progetto_sii_be/dataset_mod/users_mod.csv')
-    books_df = pd.read_csv('C:/Users/alemo/OneDrive/Lavoro/progetto_sii_be/dataset_mod/books_mod.csv')
 
     # Parametri personalizzati
+    # Top_n piccolo → precision ↑, recall ↓
+    # Top_n grande → recall ↑, precision ↓
     results = compare_user_item_cf(
-        users_df, books_df, ratings_df,
+        ratings_df,
         top_n=50, # numero di raccomandazioni per utente
         sample_n_users=400, # numero di utenti campionati per il test
-        k=400, # numero di vicini considerati
+        k=100, # numero di vicini considerati
         use_dense=True,
         n_users=700, # numero di utenti nel sotto-dataset denso
         n_items=700, # numero di libri nel sotto-dataset denso

@@ -15,7 +15,7 @@ This is a simple Python backend with basic endpoints for a recommender system. I
 
 # Run Python File
 # conda activate machine_learning_001
-# python c:/Users/alemo/OneDrive/Lavoro/progetto_sii_be/scripts/clean_datasets.py
+# python c:/Users/alemo/OneDrive/Lavoro/progetto_sii_be/scripts/run_user_vs_item.py
 
 
 ### Prerequisites
