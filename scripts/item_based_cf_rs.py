@@ -7,8 +7,8 @@ from sklearn.metrics.pairwise import cosine_similarity
 1. Costruzione della matrice: crea una matrice items x users.
 2. Normalizzazione: calcola la media dei rating per utente e centra i dati.
 3. Calcolo similarità: trova libri simili usando la cosine similarity.
-4. Selezione vicini: mantiene solo i k items più simili all'item target, tra quelli che l'utente ha già valutato.
-5. Predizione: usa una media pesata delle differenze dai rating medi dell'utente.
+4. Selezione vicini: mantiene solo i k items più simili all'item target in base alle predizioni degli utenti.
+5. Predizione: usa una media pesata delle differenze dai rating medi dell'utente target.
 6. Output: restituisce i top_n libri con rating predetto più alto.
 '''
 
@@ -98,14 +98,15 @@ def item_based_cf(
 
       # calcola le predizioni
       preds = {}
-      # scansiona gli item
+      # scansiona gli item su cui predire (non valutati dall'utente)
       for item in range(mat.shape[0]):
           # skip libri già valutati
           if item in user_rated_items:
               continue
-          # conterrà gli item già valutati dall'utente che hanno abbastanza utenti in comune con l'item target (i k più simili)
+          # conterrà gli item già valutati dall'utente che hanno abbastanza utenti in comune con l'item target (i k più)
           valid_items = []
           valid_sims = []
+          # scansiona i libri già valutati dall'utente
           for rated_item in user_rated_items:
               # trova gli utenti che hanno valutato l'item e il rated_item
               # item = indice del libro da predire
@@ -113,9 +114,10 @@ def item_based_cf(
               users_item = set(mat[item, :].nonzero()[1])
               users_rated_item = set(mat[rated_item, :].nonzero()[1])
               common_users = users_item & users_rated_item
-              # controlla min_common
+              # considera solo item che hanno almeno min_common utenti in comune
               if len(common_users) >= min_common:
                   sim = item_similarities[item, rated_item]
+                  # considera questo item come valido per la predizione (simile e con utenti in comune)
                   valid_items.append(rated_item)
                   valid_sims.append(sim)
           # se non ci sono items validi, salta
