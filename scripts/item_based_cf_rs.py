@@ -7,7 +7,7 @@ from sklearn.metrics.pairwise import cosine_similarity
 1. Costruzione della matrice: crea una matrice items x users.
 2. Normalizzazione: calcola la media dei rating per utente e centra i dati.
 3. Calcolo similarità: trova libri simili usando la cosine similarity.
-4. Selezione vicini: mantiene solo i k items più simili che l'utente ha già valutato.
+4. Selezione vicini: mantiene solo i k items più simili all'item target, tra quelli che l'utente ha già valutato.
 5. Predizione: usa una media pesata delle differenze dai rating medi dell'utente.
 6. Output: restituisce i top_n libri con rating predetto più alto.
 '''
@@ -103,7 +103,7 @@ def item_based_cf(
           # skip libri già valutati
           if item in user_rated_items:
               continue
-          # Lista per accumulare items validi (sufficienti utenti in comune)
+          # conterrà gli item già valutati dall'utente che hanno abbastanza utenti in comune con l'item target (i k più simili)
           valid_items = []
           valid_sims = []
           for rated_item in user_rated_items:
