@@ -50,7 +50,7 @@ def user_based_cf(
     user_id, ratings: pd.DataFrame, 
     k=50, 
     top_n=10, 
-    min_common=1, 
+    min_common=10, 
     min_rating=0, 
     max_rating=10
 ):
