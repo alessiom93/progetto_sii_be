@@ -10,11 +10,7 @@ sys.exit()
 
 import numpy as np
 import pandas as pd
-import matplotlib.pyplot as plt
-import seaborn as sns
-#import ipywidgets as widgets
-#from IPython.display import display, clear_output
-import os, sys
+import os
 import re
 
 def filter_users_and_books(ratings, users, books, min_ratings=100):
