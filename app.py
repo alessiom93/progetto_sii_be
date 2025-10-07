@@ -37,7 +37,7 @@ def get_recommender_systems_infos():
 @app.route('/getFiveRandomUsers', methods=['GET'])
 def get_five_random_users():
     ratings = pd.read_csv('C:/Users/alemo/OneDrive/Lavoro/progetto_sii_be/dataset_mod/ratings_explicit_mod.csv')
-    five_random_users_ids = ratings['User-ID'].sample(n=5, random_state=1).tolist()
+    five_random_users_ids = ratings['User-ID'].sample(n=5).tolist()
     users = pd.read_csv('C:/Users/alemo/OneDrive/Lavoro/progetto_sii_be/dataset_mod/users_mod.csv')
     random_users = users[users['User-ID'].isin(five_random_users_ids)].to_dict(orient='records')
     random_users_top_five_rated_books = []
@@ -141,6 +141,7 @@ def get_item_based_cf_rs():
         }), 500
 
 # creare un sotto-dataset piccolo, denso e con abbastanza overlap.
+'''
 from scripts.user_vs_item import compare_user_item_cf
 @app.route('/user_vs_item', methods=['GET'])
 def user_vs_item():
@@ -158,6 +159,7 @@ def user_vs_item():
             "status": "error",
             "message": "Failed to compare user-based and item-based CF"
         }), 500
+'''
 
 @app.route('/', methods=['GET'])
 def health_check():

@@ -4,13 +4,6 @@ Backend in Python for SII recommender system university project
 ## Overview
 This is a simple Python backend with basic endpoints for a recommender system. It provides RESTful APIs to manage and retrieve recommendations.
 
-## Features
-- Health check endpoints
-- Get recommendations (with optional user filtering)
-- Create new recommendations
-- JSON responses with proper error handling
-- CORS support for frontend integration
-
 ## Setup and Installation
 
 # Run Python File
@@ -40,7 +33,7 @@ Or use the provided script:
 
 The server will start on http://localhost:5000
 
-## API Endpoints
+## API Endpoints - general
 
 ### 1. Health Check
 - **GET** `/`
@@ -50,46 +43,24 @@ The server will start on http://localhost:5000
 - **GET** `/api/health`
 - Returns detailed API health information
 
-### 3. Get Recommendations
-- **GET** `/api/recommendations`
-- **GET** `/api/recommendations?user_id={user_id}`
-- Returns all recommendations or filtered by user_id
+### 3. Get Recommender Systems Informations
+- **GET** `/getRecommenderSystemsInfos`
+- Returns all supported recommender systems
 
-### 4. Create Recommendation
-- **POST** `/api/recommendations`
-- Content-Type: application/json
-- Body:
-  ```json
-  {
-    "user_id": "string",
-    "item": "string", 
-    "score": number (0-1)
-  }
-  ```
+### 4. Get Five Random Users
+- **GET** `/getFiveRandomUsers`
+- Returns five random users
 
-## Example Usage
+### API Endpoints - recommender systems
 
-### Get all recommendations:
-```bash
-curl http://localhost:5000/api/recommendations
-```
+### 5. Get Top 10 Most Popular Books
+- **GET** `/get_top_popularity_rs`
+- Returns 10 books, the most popular ones
 
-### Get recommendations for a specific user:
-```bash
-curl "http://localhost:5000/api/recommendations?user_id=user1"
-```
+### 6. Get Top 10 Books With User Based Collaborative Filtering
+- **GET** `/get_user_based_cf_rs`
+- Returns 10 books, choosen by the algorithm
 
-### Create a new recommendation:
-```bash
-curl -X POST -H "Content-Type: application/json" \
-  -d '{"user_id": "user1", "item": "Product X", "score": 0.85}' \
-  http://localhost:5000/api/recommendations
-```
-
-## Development
-This is a simple implementation using Flask with in-memory storage. For production use, consider:
-- Adding a proper database (PostgreSQL, MongoDB, etc.)
-- Implementing authentication and authorization
-- Adding input validation and sanitization
-- Using a production WSGI server (Gunicorn, uWSGI)
-- Adding logging and monitoring
+### 7. Get Top 10 Books With Item Based Collaborative Filtering
+- **GET** `/get_item_based_cf_rs`
+- Returns 10 books, choosen by the algorithm
