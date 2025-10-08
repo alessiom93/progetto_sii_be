@@ -17,13 +17,13 @@ if __name__ == "__main__":
     # Top_n grande → recall ↑, precision ↓
     results = compare_user_item_cf(
         ratings_df,
-        top_n=50, # numero di raccomandazioni per utente
-        sample_n_users=400, # numero di utenti campionati per il test
-        k=100, # numero di vicini considerati
+        top_n=20, # numero di raccomandazioni per utente
+        sample_n_users=300, # numero di utenti campionati per il test
+        k=200, # numero di vicini considerati
         use_dense=True,
-        n_users=700, # numero di utenti nel sotto-dataset denso
-        n_items=700, # numero di libri nel sotto-dataset denso
-        n_ratings=int(0.85 * 700 * 700), # numero di valutazioni nel sotto-dataset denso
+        n_users=300, # numero di utenti nel sotto-dataset denso
+        n_items=300, # numero di libri nel sotto-dataset denso
+        n_ratings=int(0.45 * 300 * 300), # numero di valutazioni nel sotto-dataset denso
         use_parallel=True,
         max_workers=16  # sfrutta tutti i core disponibili
     )

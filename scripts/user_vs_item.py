@@ -73,12 +73,12 @@ def evaluate_recommendations(preds_dict, test_user_items, top_n=10):
     return {"hit_rate": hit_rate, "precision": precision, "recall": recall}
 
 # Parallelizzazione
-def parallel_recommendations(func, users, train_df, k, top_n, max_workers=16):
+def parallel_recommendations(func, users, train_df, k, top_n, min_common=1, max_workers=16):
     results = {}
     # crea un pool di processi con un massimo di max_workers
     with ProcessPoolExecutor(max_workers=max_workers) as executor:
         # sottomette un task asincrono per ogni utente
-        futures = {executor.submit(func, u, train_df, k, top_n): u for u in users}
+        futures = {executor.submit(func, u, train_df, k, top_n, min_common): u for u in users}
         # attende che i task siano completati
         for future in as_completed(futures):
             u = futures[future]
@@ -129,12 +129,12 @@ def compare_user_item_cf(ratings_df, top_n=10, sample_n_users=500, k=50,
         # calcola le raccomandazioni usando entrambi gli algoritmi
         if use_parallel:
             # se richiesto, esecuzione parallela dei due algoritmi
-            preds_user = parallel_recommendations(user_based_cf, sampled_users, train_ratings, k, top_n, max_workers)
-            preds_item = parallel_recommendations(item_based_cf, sampled_users, train_ratings, k//2, top_n, max_workers)
+            preds_user = parallel_recommendations(user_based_cf, sampled_users, train_ratings, k, top_n, min_common=1, max_workers=max_workers)
+            preds_item = parallel_recommendations(item_based_cf, sampled_users, train_ratings, k, top_n, min_common=1, max_workers=max_workers)
         else:
             # altrimenti, esecuzione sequenziale
             preds_user = {str(u): user_based_cf(u, train_ratings, k=k, top_n=top_n) for u in sampled_users}
-            preds_item = {str(u): item_based_cf(u, train_ratings, k=k//2, top_n=top_n) for u in sampled_users}
+            preds_item = {str(u): item_based_cf(u, train_ratings, k=k, top_n=top_n) for u in sampled_users}
         # valuta le raccomandazioni calcolando hit rate, precision e recall
         user_metrics = evaluate_recommendations(preds_user, test_user_items, top_n=top_n)
         item_metrics = evaluate_recommendations(preds_item, test_user_items, top_n=top_n)
