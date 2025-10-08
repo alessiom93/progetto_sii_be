@@ -18,6 +18,7 @@ logger = logging.getLogger(__name__)
 # Fa un campionamento denso del dataset
 # per testare gli algoritmi su un sottoinsieme più gestibile.
 def sample_dense_subset(ratings_df, n_users=20, n_items=20, n_ratings=200, random_state=42):
+    print(f"[DEBUG] Set originale: {ratings_df.shape} shape, {ratings_df['User-ID'].nunique()} utenti, {ratings_df['ISBN'].nunique()} item")
     # seed per riproducibilità
     np.random.seed(random_state)
     # seleziona gli n utenti con più valutazioni
@@ -38,6 +39,7 @@ def sample_dense_subset(ratings_df, n_users=20, n_items=20, n_ratings=200, rando
     # calcola la densità del sottoinsieme (percentuale di celle non nulle nella matrice user-item)
     density = n_ratings / max_possible if max_possible > 0 else 0
     logger.debug(f"[DEBUG] Subset campionato: {subset.shape[0]} righe, {subset['User-ID'].nunique()} utenti, {subset['ISBN'].nunique()} item, densità={density:.2f}")
+    print(f"[DEBUG] Subset campionato: {subset.shape} shape, {subset['User-ID'].nunique()} utenti, {subset['ISBN'].nunique()} item, densità={density:.2f}")
     # ritorna il sottoinsieme resettando gli indici
     return subset.reset_index(drop=True)
 
@@ -89,7 +91,7 @@ def parallel_recommendations(func, users, train_df, k, top_n, max_workers=16):
     return results
 
 # Confronto algoritmi
-def compare_user_item_cf(ratings_df, top_n=10, sample_n_users=500, k=200,
+def compare_user_item_cf(ratings_df, top_n=10, sample_n_users=500, k=50,
                          use_dense=True, n_users=500, n_items=500, n_ratings=150000,
                          use_parallel=True, max_workers=16):
     try:
@@ -114,18 +116,25 @@ def compare_user_item_cf(ratings_df, top_n=10, sample_n_users=500, k=200,
             # seleziona casualmente il 20% delle valutazioni come test set
             test_items = set(user_ratings.sample(frac=0.2, random_state=42)['ISBN'])
             # rimuove le valutazioni di test dal dataset di addestramento (non utilizzato)
-            train_ratings = ratings_df.drop(user_ratings[user_ratings['ISBN'].isin(test_items)].index)
+            #train_ratings = ratings_df.drop(user_ratings[user_ratings['ISBN'].isin(test_items)].index)
             # registra gli item di test per l'utente
             test_user_items[str(uid)] = test_items
+        # crea training set rimuovendo il test set
+        print(f"Training ratings shape before removing test items: {ratings_df.shape}")
+        train_ratings = ratings_df[~ratings_df.apply(
+            lambda row: str(row['User-ID']) in test_user_items and row['ISBN'] in test_user_items[str(row['User-ID'])],
+            axis=1
+        )]
+        print(f"Training ratings shape after removing test items: {train_ratings.shape}")
         # calcola le raccomandazioni usando entrambi gli algoritmi
         if use_parallel:
             # se richiesto, esecuzione parallela dei due algoritmi
-            preds_user = parallel_recommendations(user_based_cf, sampled_users, ratings_df, k, top_n, max_workers)
-            preds_item = parallel_recommendations(item_based_cf, sampled_users, ratings_df, k, top_n, max_workers)
+            preds_user = parallel_recommendations(user_based_cf, sampled_users, train_ratings, k, top_n, max_workers)
+            preds_item = parallel_recommendations(item_based_cf, sampled_users, train_ratings, k//2, top_n, max_workers)
         else:
             # altrimenti, esecuzione sequenziale
-            preds_user = {str(u): user_based_cf(u, ratings_df, k=k, top_n=top_n) for u in sampled_users}
-            preds_item = {str(u): item_based_cf(u, ratings_df, k=k, top_n=top_n) for u in sampled_users}
+            preds_user = {str(u): user_based_cf(u, train_ratings, k=k, top_n=top_n) for u in sampled_users}
+            preds_item = {str(u): item_based_cf(u, train_ratings, k=k//2, top_n=top_n) for u in sampled_users}
         # valuta le raccomandazioni calcolando hit rate, precision e recall
         user_metrics = evaluate_recommendations(preds_user, test_user_items, top_n=top_n)
         item_metrics = evaluate_recommendations(preds_item, test_user_items, top_n=top_n)
