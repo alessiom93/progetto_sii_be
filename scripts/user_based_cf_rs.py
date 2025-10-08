@@ -50,7 +50,7 @@ def user_based_cf(
     user_id, ratings: pd.DataFrame, 
     k=50, 
     top_n=10, 
-    min_common=10, 
+    min_common=5, 
     min_rating=0, 
     max_rating=10
 ):
@@ -128,7 +128,7 @@ def user_based_cf(
             num, den = 0.0, 0.0
             # accumula i contributi dei vicini
             for u in neighbors:
-                # ottiene la riga del vicino come array
+                # ottiene la valutazione del vicino per l'item
                 row = mat.getrow(int(u)).toarray()[0]
                 rating = float(row[int(item)])
                 # considera solo se il vicino ha valutato l'item
@@ -137,7 +137,7 @@ def user_based_cf(
                     sim = float(similarities[int(u)])
                     num += sim * (rating - float(user_means[int(u)]))
                     den += abs(sim)
-            # se den > 0, ovvero se abbiamo almeno un vicino che ha valutato l'item
+            # se den > 0
             if den > 0:
                 # calcola la predizione come media pesata + media dell'utente
                 pred = float(user_means[user_index]) + (num / den)
