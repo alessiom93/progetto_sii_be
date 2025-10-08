@@ -49,9 +49,9 @@ def build_item_user_matrix(ratings: pd.DataFrame):
 def item_based_cf(
     user_id, 
     ratings: pd.DataFrame, 
-    k=50, 
+    k=25, 
     top_n=10, 
-    min_common=10, 
+    min_common=15, 
     min_rating=0, 
     max_rating=10
 ):
