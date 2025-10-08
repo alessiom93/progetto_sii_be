@@ -7,7 +7,7 @@ from sklearn.metrics.pairwise import cosine_similarity
 1. Costruzione della matrice: crea una matrice items x users.
 2. Normalizzazione: calcola la media dei rating per utente e centra i dati.
 3. Calcolo similarità: trova libri simili usando la cosine similarity.
-4. Selezione vicini: mantiene solo i k items più simili all'item target in base alle predizioni degli utenti.
+4. Selezione vicini: mantiene solo i k items più simili all'item target che hanno abbastanza utenti in comune.
 5. Predizione: usa una media pesata delle differenze dai rating medi dell'utente target.
 6. Output: restituisce i top_n libri con rating predetto più alto.
 '''
