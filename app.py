@@ -30,7 +30,7 @@ def get_recommender_systems_infos():
                 {"id": 1, "name": "Top Popularity", "description": "Recommends the most popular items (Top 10 popular books)"},
                 {"id": 2, "name": "User Based Collaborative Filtering", "description": "Recommends items based on user similarity (Users like you also liked...)"},
                 {"id": 3, "name": "Item Based Collaborative Filtering", "description": "Recommends items based on item similarity (Who read these books also read...)"},
-                {"id": 4, "name": "Content Based Filtering", "description": "Recommends items based on content features (Similar books based on description)"}
+                {"id": 4, "name": "Compare User and Item Based CF", "description": "Compare the two approaches on a dense subset of the dataset"}
             ]
     })
 
@@ -141,25 +141,32 @@ def get_item_based_cf_rs():
         }), 500
 
 # creare un sotto-dataset piccolo, denso e con abbastanza overlap.
-'''
 from scripts.user_vs_item import compare_user_item_cf
 @app.route('/user_vs_item', methods=['GET'])
 def user_vs_item():
     print("Comparing user-based and item-based CF...")
     try:
         ratings_explicit_mod = pd.read_csv('C:/Users/alemo/OneDrive/Lavoro/progetto_sii_be/dataset_mod/ratings_explicit_mod.csv')
-        users_mod = pd.read_csv('C:/Users/alemo/OneDrive/Lavoro/progetto_sii_be/dataset_mod/users_mod.csv')
-        books_mod = pd.read_csv('C:/Users/alemo/OneDrive/Lavoro/progetto_sii_be/dataset_mod/books_mod.csv')
-        results = compare_user_item_cf(users_mod, books_mod, ratings_explicit_mod)
+        results = compare_user_item_cf(
+            ratings_explicit_mod,
+            top_n=20, # numero di raccomandazioni per utente
+            sample_n_users=300, # numero di utenti campionati per il test
+            k=200, # numero di vicini considerati
+            use_dense=True,
+            n_users=300, # numero di utenti nel sotto-dataset denso
+            n_items=300, # numero di libri nel sotto-dataset denso
+            n_ratings=int(0.80 * 300 * 300), # numero di valutazioni nel sotto-dataset denso
+            use_parallel=True,
+            max_workers=16  # sfrutta tutti i core disponibili
+        )
         print("Comparison results:", results)
-        return jsonify({"results": results})
+        return jsonify({"metrics": results})
     except Exception as e:
         logger.error(f"Error comparing user-based and item-based CF: {str(e)}")
         return jsonify({
             "status": "error",
             "message": "Failed to compare user-based and item-based CF"
         }), 500
-'''
 
 @app.route('/', methods=['GET'])
 def health_check():
@@ -201,4 +208,4 @@ def internal_error(error):
 
 if __name__ == '__main__':
     logger.info("Starting SII Recommender System Backend...")
-    app.run(host='0.0.0.0', port=5000, debug=True)
+    app.run(host='0.0.0.0', port=5000, debug=True, use_reloader=False)

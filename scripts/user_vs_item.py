@@ -1,8 +1,8 @@
 import numpy as np
 import logging
 from concurrent.futures import ProcessPoolExecutor, as_completed
-from item_based_cf_rs import item_based_cf
-from user_based_cf_rs import user_based_cf
+from scripts.item_based_cf_rs import item_based_cf
+from scripts.user_based_cf_rs import user_based_cf
 
 ''' Confronto tra User-Based e Item-Based Collaborative Filtering
 1. Campionamento denso: estrae un sottoinsieme del dataset con utenti e item con più valutazioni.
